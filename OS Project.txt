@@ -1,0 +1,153 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define num_resources 3
+#define num_processes 5
+
+int available_resources[num_resources];
+int max_claim[num_processes][num_resources];
+int allocation[num_processes][num_resources];
+int need[num_processes][num_resources];
+
+pthread_mutex_t mutex;
+
+// Function to request resources
+void request_resources(int process_id, int request[]) {
+    pthread_mutex_lock(&mutex);
+    
+    // Check if the request is valid
+    int i;
+    for (i = 0; i < num_resources; i++) {
+        if (request[i] > need[process_id][i] || request[i] > available_resources[i]) {
+            pthread_mutex_unlock(&mutex);
+            return;  // Request denied
+        }
+    }
+
+    // Temporarily allocate resources
+    for (i = 0; i < num_resources; i++) {
+        available_resources[i] -= request[i];
+        allocation[process_id][i] += request[i];
+        need[process_id][i] -= request[i];
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+// Function to release resources
+void release_resources(int process_id, int release[]) {
+    pthread_mutex_lock(&mutex);
+
+    int i;
+    for (i = 0; i < num_resources; i++) {
+        available_resources[i] += release[i];
+        allocation[process_id][i] -= release[i];
+        need[process_id][i] += release[i];
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+// Function to check if the system is in a safe state
+int is_safe_state() {
+    int work[num_resources];
+    int finish[num_processes];
+
+    int i, j;
+    for (i = 0; i < num_resources; i++) {
+        work[i] = available_resources[i];
+    }
+
+    for (i = 0; i < num_processes; i++) {
+        finish[i] = 0;
+    }
+
+    int sequence[num_processes];
+    int k = 0;
+
+    for (i = 0; i < num_processes; i++) {
+        if (finish[i] == 0) {
+            int can_allocate = 1;
+            for (j = 0; j < num_resources; j++) {
+                if (need[i][j] > work[j]) {
+                    can_allocate = 0;
+                    break;
+                }
+            }
+
+            if (can_allocate) {
+                for (j = 0; j < num_resources; j++) {
+                    work[j] += allocation[i][j];
+                }
+                finish[i] = 1;
+                sequence[k++] = i;
+                i = -1;  // Start over
+            }
+        }
+    }
+
+    for (i = 0; i < num_processes; i++) {
+        if (finish[i] == 0) {
+            return 0;  // Not in a safe state
+        }
+    }
+
+    return 1;  // Safe state
+}
+
+// Thread function simulating processes
+void *process_thread(void *arg) {
+    int process_id = *(int *)arg;
+
+    // Simulate resource requests and releases
+    int request[num_resources];
+    int release[num_resources];
+
+    // Initialize request and release arrays as needed
+
+    // Request and release resources
+    request_resources(process_id, request);
+    release_resources(process_id, release);
+
+    // Check if the system is in a safe state
+    if (is_safe_state()) {
+        printf("Process %d: Safe state\n", process_id);
+    } else {
+        printf("Process %d: Unsafe state\n", process_id);
+    }
+
+    return NULL;
+}
+
+int main() {
+    // Initialize available resources, max_claim, allocation, and need matrices
+
+    // Initialize mutex
+    if (pthread_mutex_init(&mutex, NULL) != 0) {
+        printf("Mutex initialization failed\n");
+        return 1;
+    }
+
+    pthread_t threads[num_processes];
+    int process_ids[num_processes];
+
+    // Create threads for each process
+    for (int i = 0; i < num_processes; i++) {
+        process_ids[i] = i;
+        if (pthread_create(&threads[i], NULL, process_thread, &process_ids[i]) != 0) {
+            printf("Thread creation failed\n");
+            return 1;
+        }
+    }
+
+    // Wait for all threads to finish
+    for (int i = 0; i < num_processes; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // Destroy the mutex
+    pthread_mutex_destroy(&mutex);
+
+    return 0;
+}
